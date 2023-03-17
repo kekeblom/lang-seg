@@ -3,10 +3,10 @@ import torch
 import torch.nn as nn
 import torchvision.transforms as transforms
 from argparse import ArgumentParser
-import pytorch_lightning as pl
 from .lsegmentation_module import LSegmentationModule
 from .models.lseg_net import LSegNet
 from encoding.models.sseg.base import up_kwargs
+from pathlib import Path
 
 import os
 import clip
@@ -25,6 +25,7 @@ class LSegModule(LSegmentationModule):
         super(LSegModule, self).__init__(
             data_path, dataset, batch_size, base_lr, max_epochs, **kwargs
         )
+        self.dataset = dataset
 
         if dataset == "citys":
             self.base_size = 2048
@@ -52,19 +53,8 @@ class LSegModule(LSegmentationModule):
         self.train_transform = transforms.Compose(train_transform)
         self.val_transform = transforms.Compose(val_transform)
 
-        self.trainset = self.get_trainset(
-            dataset,
-            augment=kwargs["augment"],
-            base_size=self.base_size,
-            crop_size=self.crop_size,
-        )
-        
-        self.valset = self.get_valset(
-            dataset,
-            augment=kwargs["augment"],
-            base_size=self.base_size,
-            crop_size=self.crop_size,
-        )
+        self._trainset = None
+        self._valset = None
 
         use_batchnorm = (
             (not kwargs["no_batchnorm"]) if "no_batchnorm" in kwargs else True
@@ -91,22 +81,53 @@ class LSegModule(LSegmentationModule):
         self._up_kwargs = up_kwargs
         self.mean = norm_mean
         self.std = norm_std
+        self.augment = kwargs.get('augment', False)
 
-        self.criterion = self.get_criterion(**kwargs)
+        self._criterion = None
+        self.kwargs = kwargs
 
     def get_labels(self, dataset):
         labels = []
-        path = 'label_files/{}_objectInfo150.txt'.format(dataset)
+        path = Path(__file__).parent.parent / 'label_files'
+        path = str(path / '{}_objectInfo150.txt'.format(dataset))
         assert os.path.exists(path), '*** Error : {} not exist !!!'.format(path)
-        f = open(path, 'r') 
-        lines = f.readlines()      
-        for line in lines: 
+        f = open(path, 'r')
+        lines = f.readlines()
+        for line in lines:
             label = line.strip().split(',')[-1].split(';')[0]
             labels.append(label)
         f.close()
         if dataset in ['ade20k']:
             labels = labels[1:]
         return labels
+
+    @property
+    def trainset(self):
+        if self._trainset is None:
+            self._trainset = self.get_trainset(
+                self.dataset,
+                augment=self.augment,
+                base_size=self.base_size,
+                crop_size=self.crop_size,
+            )
+        return self._trainset
+
+    @property
+    def valset(self):
+        if self._valset is None:
+            self._valset = self.get_valset(
+                self.dataset,
+                augment=kwargs["augment"],
+                base_size=self.base_size,
+                crop_size=self.crop_size,
+            )
+        return self._valset
+
+    @property
+    def criterion(self):
+        if self._criterion is None:
+            self._criterion = self.get_criterioon(**self.kwargs)
+        return self._criterion
 
 
     @staticmethod

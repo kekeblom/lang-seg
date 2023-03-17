@@ -5,6 +5,7 @@ import clip
 import torch
 import torch.nn as nn
 import torchvision.transforms as transforms
+import torchmetrics
 
 from argparse import ArgumentParser
 
@@ -61,7 +62,7 @@ class LSegmentationModule(pl.LightningModule):
         inter, union = batch_intersection_union(pred.data, target.data, self.nclass)
 
         return correct, labeled, inter, union
-    
+
 
     def training_step(self, batch, batch_nb):
         img, target = batch
@@ -85,7 +86,7 @@ class LSegmentationModule(pl.LightningModule):
 
     def validation_step(self, batch, batch_nb):
         img, target = batch
-        out = self(img) 
+        out = self(img)
         multi_loss = isinstance(out, tuple)
         if multi_loss:
             val_loss = self.criterion(*out, target)
@@ -209,12 +210,14 @@ class LSegmentationModule(pl.LightningModule):
         )
 
         self.num_classes = dset.num_class
-        self.train_accuracy = pl.metrics.Accuracy()
+        # self.train_accuracy = pl.metrics.Accuracy()
+        self.train_accuracy = torchmetrics.Accuracy(task='multiclass', num_classes=self.num_classes)
 
         return dset
 
     def get_valset(self, dset, augment=False, **kwargs):
-        self.val_accuracy = pl.metrics.Accuracy()
+        self.val_accuracy = torchmetrics.Accuracy(task='multiclass', num_classes=self.num_classes)
+        # self.val_accuracy = pl.metrics.Accuracy()
         self.val_iou = SegmentationMetric(self.num_classes)
 
         if augment == True:
@@ -235,12 +238,12 @@ class LSegmentationModule(pl.LightningModule):
 
     def get_criterion(self, **kwargs):
         return SegmentationLosses(
-            se_loss=kwargs["se_loss"], 
-            aux=kwargs["aux"], 
-            nclass=self.num_classes, 
-            se_weight=kwargs["se_weight"], 
-            aux_weight=kwargs["aux_weight"], 
-            ignore_index=kwargs["ignore_index"], 
+            se_loss=kwargs["se_loss"],
+            aux=kwargs["aux"],
+            nclass=self.num_classes,
+            se_weight=kwargs["se_weight"],
+            aux_weight=kwargs["aux_weight"],
+            ignore_index=kwargs["ignore_index"],
         )
 
     @staticmethod
